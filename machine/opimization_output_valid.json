@@ -1,0 +1,40 @@
+{
+  "manifoldSeedId": "seed_opt_001",
+  "parentSeedIds": [],
+  "derivedFrom": "optimization_output",
+
+  "rawStrokePoints": [],
+  "smoothedCurvePoints": [],
+
+  "arcLengthSampledPoints": [
+    { "x": 0.0, "y": 0.0 },
+    { "x": 1.0, "y": 0.0 },
+    { "x": 1.0, "y": 1.0 },
+    { "x": 0.0, "y": 1.0 },
+    { "x": 0.0, "y": 0.0 }
+  ],
+
+  "rectangleHotspots": [
+    { "x": 0.5, "y": 0.5, "intensity": 0.8, "candidateType": "optimization_peak" }
+  ],
+
+  "metadata": {
+    "sampleCount": 5,
+    "totalArcLength": 4.0,
+    "boundingBox": {
+      "minX": 0.0,
+      "minY": 0.0,
+      "maxX": 1.0,
+      "maxY": 1.0
+    },
+    "smoothingMethod": "none",
+    "samplingMethod": "optimization_output"
+  },
+
+  "debug": {
+    "closureGapBeforeSnap": 0.0,
+    "resamplingErrorEstimate": 0.0,
+    "hotspotCandidatesRejected": 0,
+    "selfIntersectionWarnings": []
+  }
+}

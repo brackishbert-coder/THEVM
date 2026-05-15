@@ -1,0 +1,10 @@
+{
+  "manifoldSeedId": "seed_opt_invalid_001",
+  "parentSeedIds": [],
+  "derivedFrom": "optimization_output",
+
+  "rawStrokePoints": [],
+  "smoothedCurvePoints": [],
+
+  "arcLengthSampledPoints": [
+    { "x": 0.
