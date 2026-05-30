@@ -3,7 +3,6 @@ package execution.implementation;
 
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -131,9 +130,6 @@ public class SimpleManifoldRunner implements ManifoldRunner {
         try {
             while (!condition.shouldStop(snapshot())) {
                 step();
-                for (Flatlander f : snapshot().getActiveFlatlanders()) {
-                    System.out.println(f.getId() + " -> " + Arrays.toString(f.getState().getPosition().getCoordinates()));
-                }
             }
         } finally {
             running = false;

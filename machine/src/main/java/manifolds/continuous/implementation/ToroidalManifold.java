@@ -479,7 +479,6 @@ public class ToroidalManifold implements ContinuousManifold {
         @Override public double getRadius() { return radius; }
 		@Override
 		public List<Position> getPositionsInRadius() {
-			// TODO Auto-generated method stub
 			return positions;
 		}
     }

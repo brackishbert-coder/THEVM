@@ -98,13 +98,11 @@ public class ManifoldSystemRunner {
 
 			@Override
 			public boolean shouldStop(SystemSnapshot snapshot) {
-				// TODO Auto-generated method stub
 				return snapshot.getStep() >= 10;
 			}
 
 			@Override
 			public boolean shouldStop(RunnerSnapshot snapshot) {
-				// TODO Auto-generated method stub
 				return snapshot.getStep() >= 10;
 			}
         });

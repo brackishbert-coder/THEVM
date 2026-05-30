@@ -258,7 +258,6 @@ public class ManifoldSystemRunner {
     ) {
 
 		public int getStep() {
-			// TODO Auto-generated method stub
 			return (int) stepCount;
 		}
     }

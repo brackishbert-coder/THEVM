@@ -446,7 +446,6 @@ public class SimpleDiscreteGraphManifold
         @Override public double getRadius() { return radius; }
 		@Override
 		public List<Position> getNearbyPositions() {
-			// TODO Auto-generated method stub
 			return positions;
 		}
     }
