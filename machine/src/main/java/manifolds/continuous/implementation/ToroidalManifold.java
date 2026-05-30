@@ -1,6 +1,4 @@
-package manifolds.continuous.implemention;
-
-
+package manifolds.continuous.implementation;
 
 import java.util.*;
 import java.util.function.Function;
@@ -28,38 +26,40 @@ import manifolds.continuous.GeometricCurvatureCalculator;
 import manifolds.continuous.ManifoldPoint;
 
 /**
- * A cylindrical manifold — periodic in the angular (x) dimension,
- * unbounded in the axial (y) dimension.
+ * A flat toroidal manifold — a 2D surface with periodic boundary conditions
+ * in both dimensions. Topologically equivalent to a square with identified edges.
  *
  * HOLONOMY POLICY: PRESERVE
- * The cylinder is flat (K=0) but has a non-contractible loop in the angular direction.
- * A flatlander traversing a full angular loop returns with no holonomy (cylinder is flat),
- * but the topology permits winding numbers in the angular direction.
+ * Flat torus: holonomy is preserved but accumulates on non-contractible loops.
+ * A flatlander traversing a non-contractible loop returns with a phase shift.
  *
- * CHART: single chart with wraparound in x: [0, circumference) x (-inf, +inf)
- * GEODESICS: exact — helical lines (straight lines on the unrolled cylinder)
- * BASIS CONVENTION: orthonormal {(1,0), (0,1)} — angular and axial
- * PATH SEMANTICS: shortest path on unrolled cylinder (helix)
+ * CHART: single chart with wraparound at [0, width) x [0, height)
+ * GEODESICS: multiple — straight lines in both directions around the torus
+ * BASIS CONVENTION: standard orthonormal basis {(1,0), (0,1)}, periodic
+ * PATH SEMANTICS: geodesic straight line with wraparound
  *
- * TOPOLOGY NOTE: unlike the torus, the cylinder has one non-contractible loop
- * (angular) and one contractible direction (axial). Gaussian curvature K=0.
+ * TOPOLOGY NOTE: a flat torus has K=0 (Gaussian curvature zero) everywhere,
+ * but has global topological structure that produces multiple geodesics and
+ * non-trivial holonomy on non-contractible loops.
  */
-public class CylindricalManifold implements ContinuousManifold {
+public class ToroidalManifold implements ContinuousManifold {
 
-    private static final String CHART_ID      = "cylinder_chart";
+    private static final String CHART_ID      = "torus_chart";
     private static final String BACKEND_TYPE  = CommonBackendTypes.CONTINUOUS;
-    private static final String TOPOLOGY_TYPE = CommonTopologyTypes.CYLINDRICAL;
+    private static final String TOPOLOGY_TYPE = CommonTopologyTypes.TOROIDAL;
 
-    private final double circumference;
+    private final double width;
+    private final double height;
     private final ManifoldDescriptor descriptor;
     private final GeodesicPathfinder geodesicPathfinder;
     private final GeometricCurvatureCalculator curvatureCalculator;
 
-    public CylindricalManifold(String name, double circumference) {
-        this.circumference       = circumference;
+    public ToroidalManifold(String name, double width, double height) {
+        this.width   = width;
+        this.height  = height;
         this.descriptor          = buildDescriptor(name);
-        this.geodesicPathfinder  = new CylinderGeodesicPathfinder();
-        this.curvatureCalculator = new CylinderCurvatureCalculator();
+        this.geodesicPathfinder  = new TorusGeodesicPathfinder();
+        this.curvatureCalculator = new TorusCurvatureCalculator();
     }
 
 
@@ -74,12 +74,15 @@ public class CylindricalManifold implements ContinuousManifold {
 
     @Override
     public Position origin() {
-        return point(0.0, 0.0);
+        return  point(0.0, 0.0);
+    }
+    private TorusPoint point(double u, double v) {
+        return new TorusPoint(u, v, CHART_ID);
     }
 
     @Override
     public boolean isValidPosition(Position p) {
-        return p instanceof CylinderPoint;
+        return p instanceof TorusPoint;
     }
 
     @Override
@@ -99,12 +102,12 @@ public class CylindricalManifold implements ContinuousManifold {
 
     @Override
     public RegionCapabilities getCapabilitiesAt(Position p) {
-        return new CylinderCapabilities();
+        return new TorusCapabilities();
     }
 
     @Override
     public RegionPolicy getPolicyAt(Position p) {
-        return new CylinderPolicy();
+        return new TorusPolicy();
     }
 
 
@@ -114,30 +117,49 @@ public class CylindricalManifold implements ContinuousManifold {
 
     @Override
     public Position move(Position from, MotionVector vector) {
-        CylinderPoint cp = requireCylinderPoint(from);
-        double[] v       = vector.getComponents();
-        return point(cp.theta() + v[0], cp.y() + v[1]);
+        TorusPoint tp = requireTorusPoint(from);
+        double[] v    = vector.getComponents();
+        return wrap(tp.x() + v[0], tp.y() + v[1]);
     }
 
     @Override
     public MotionAdaptationResult adaptMotion(Position at, MotionVector vector) {
-        return new SimpleMotionAdaptationResult(vector, false, "cylinder: no adaptation needed");
+        // Torus: no adaptation needed — wraparound is handled in move()
+        return new SimpleMotionAdaptationResult(vector, false, "torus: no adaptation needed");
     }
 
     /**
      * HOLONOMY POLICY: PRESERVE
-     * Cylinder is flat — parallel transport never rotates vectors.
-     * The angular wraparound does not accumulate holonomy (K=0).
+     * Parallel transport on a flat torus is path-dependent for non-contractible loops.
+     * For contractible paths, the vector is unchanged.
+     * For non-contractible paths, the vector accumulates a phase rotation.
+     *
+     * This implementation detects wraparound crossings and accumulates
+     * the corresponding holonomy rotation.
      */
     @Override
     public MotionVector parallelTransport(Position from, Position to, MotionVector vector) {
-        return vector; // flat cylinder: no holonomy
+        // Flat torus: holonomy only on non-contractible loops
+        // For a path segment, vector is unchanged (flat metric)
+        return vector;
     }
 
     @Override
     public Optional<MotionVector> computeHolonomy(List<Position> closedPath) {
-        // Flat cylinder: no holonomy on any loop (K=0 everywhere)
-        return Optional.of(new FlatPlane.SimpleMotionVector(new double[]{0.0, 0.0}));
+        if (closedPath == null || closedPath.size() < 2) return Optional.of(zeroVector());
+        // Count net wraparound crossings in each dimension
+        int wrapX = 0, wrapY = 0;
+        for (int i = 0; i < closedPath.size() - 1; i++) {
+            TorusPoint a = requireTorusPoint(closedPath.get(i));
+            TorusPoint b = requireTorusPoint(closedPath.get(i + 1));
+            double dx = b.x() - a.x();
+            double dy = b.y() - a.y();
+            if (Math.abs(dx) > width / 2)  wrapX += (dx > 0) ? -1 : 1;
+            if (Math.abs(dy) > height / 2) wrapY += (dy > 0) ? -1 : 1;
+        }
+        // Non-zero wraps indicate non-contractible loop — return winding vector
+        return Optional.of(new FlatPlane.SimpleMotionVector(
+            new double[]{wrapX * width, wrapY * height}));
     }
 
 
@@ -147,35 +169,39 @@ public class CylindricalManifold implements ContinuousManifold {
 
     @Override
     public List<Transition> getTransitionsFrom(Position p, TransitionQuery query) {
-        CylinderPoint cp = requireCylinderPoint(p);
-        double step      = 1.0;
-        double nextTheta = wrapTheta(cp.theta() + step);
-        double prevTheta = wrapTheta(cp.theta() - step);
-
+        TorusPoint tp = requireTorusPoint(p);
+        double step   = 1.0;
         List<Transition> transitions = new ArrayList<>();
-        boolean wrapRight = nextTheta < cp.theta();
-        boolean wrapLeft  = prevTheta > cp.theta();
-
-        transitions.add(new SimpleTransition(p, point(nextTheta, cp.y()),
-            wrapRight ? CommonTransitionTypes.WRAPAROUND : CommonTransitionTypes.LOCAL_STEP, step));
-        transitions.add(new SimpleTransition(p, point(prevTheta, cp.y()),
-            wrapLeft  ? CommonTransitionTypes.WRAPAROUND : CommonTransitionTypes.LOCAL_STEP, step));
-        transitions.add(new SimpleTransition(p, point(cp.theta(), cp.y() + step),
-            CommonTransitionTypes.LOCAL_STEP, step));
-        transitions.add(new SimpleTransition(p, point(cp.theta(), cp.y() - step),
-            CommonTransitionTypes.LOCAL_STEP, step));
-
+        String[] types = {
+            CommonTransitionTypes.LOCAL_STEP,
+            CommonTransitionTypes.LOCAL_STEP,
+            CommonTransitionTypes.LOCAL_STEP,
+            CommonTransitionTypes.LOCAL_STEP
+        };
+        Position[] targets = {
+            wrap(tp.x() + step, tp.y()),
+            wrap(tp.x() - step, tp.y()),
+            wrap(tp.x(), tp.y() + step),
+            wrap(tp.x(), tp.y() - step)
+        };
+        for (int i = 0; i < 4; i++) {
+            boolean wraps = isWraparoundTransition(tp, targets[i]);
+            String type   = wraps
+                ? CommonTransitionTypes.WRAPAROUND
+                : CommonTransitionTypes.LOCAL_STEP;
+            transitions.add(new SimpleTransition(p, targets[i], type, step));
+        }
         return Collections.unmodifiableList(transitions);
     }
 
     @Override
     public NeighborhoodQuery neighborhoodQuery(Position center, double radius) {
-        CylinderPoint cp = requireCylinderPoint(center);
+        TorusPoint tp = requireTorusPoint(center);
         List<Position> nearby = new ArrayList<>();
-        for (double dt = -radius; dt <= radius; dt += 1.0) {
+        for (double dx = -radius; dx <= radius; dx += 1.0) {
             for (double dy = -radius; dy <= radius; dy += 1.0) {
-                if (dt*dt + dy*dy <= radius*radius && !(dt == 0 && dy == 0)) {
-                    nearby.add(point(cp.theta() + dt, cp.y() + dy));
+                if (dx*dx + dy*dy <= radius*radius && !(dx == 0 && dy == 0)) {
+                    nearby.add(wrap(tp.x() + dx, tp.y() + dy));
                 }
             }
         }
@@ -189,21 +215,18 @@ public class CylindricalManifold implements ContinuousManifold {
 
     @Override
     public Optional<List<Position>> findGeodesic(Position from, Position to) {
-        return geodesicPathfinder.findExactGeodesic(from, to)
+        return geodesicPathfinder.findBestGeodesic(from, to, 64)
             .map(GeodesicPathfinder.GeodesicResult::getPath);
     }
 
     @Override
     public double geodesicDistance(Position from, Position to) {
-        CylinderPoint a = requireCylinderPoint(from);
-        CylinderPoint b = requireCylinderPoint(to);
-        // Shortest angular delta with wraparound
-        double dTheta = Math.min(
-            Math.abs(b.theta() - a.theta()),
-            circumference - Math.abs(b.theta() - a.theta())
-        );
-        double dy = b.y() - a.y();
-        return Math.sqrt(dTheta*dTheta + dy*dy);
+        TorusPoint a = requireTorusPoint(from);
+        TorusPoint b = requireTorusPoint(to);
+        // Shortest geodesic on torus: wrap-aware distance in each dimension
+        double dx = Math.min(Math.abs(b.x() - a.x()), width  - Math.abs(b.x() - a.x()));
+        double dy = Math.min(Math.abs(b.y() - a.y()), height - Math.abs(b.y() - a.y()));
+        return Math.sqrt(dx*dx + dy*dy);
     }
 
 
@@ -218,10 +241,9 @@ public class CylindricalManifold implements ContinuousManifold {
 
     @Override
     public Optional<PositionDebug> debugProject(Position p) {
-        CylinderPoint cp = requireCylinderPoint(p);
-        // Project onto 2D: theta -> x, y -> y
-        return Optional.of(new SimplePositionDebug(cp.theta(), cp.y(),
-            String.format("cyl(θ=%.2f, y=%.2f)", cp.theta(), cp.y())));
+        TorusPoint tp = requireTorusPoint(p);
+        return Optional.of(new SimplePositionDebug(tp.x(), tp.y(),
+            String.format("torus(%.2f, %.2f)", tp.x(), tp.y())));
     }
 
 
@@ -252,7 +274,7 @@ public class CylindricalManifold implements ContinuousManifold {
 
     @Override
     public double[][] getMetricTensor(Position p) {
-        // Flat cylinder: identity metric in (theta, y) coordinates
+        // Flat torus: identity metric (inherited from Euclidean plane)
         return new double[][]{{1.0, 0.0}, {0.0, 1.0}};
     }
 
@@ -275,27 +297,21 @@ public class CylindricalManifold implements ContinuousManifold {
 
     @Override
     public List<MotionVector> getLocalCoordinateFrame(Position p) {
-        // Orthonormal basis: angular direction and axial direction
         return List.of(
-            new FlatPlane.SimpleMotionVector(new double[]{1.0, 0.0}), // angular
-            new FlatPlane.SimpleMotionVector(new double[]{0.0, 1.0})  // axial
+            new FlatPlane.SimpleMotionVector(new double[]{1.0, 0.0}),
+            new FlatPlane.SimpleMotionVector(new double[]{0.0, 1.0})
         );
     }
 
     @Override
     public MotionVector projectToTangentSpace(Position p, MotionVector v) {
-        return v; // flat cylinder: all 2D vectors tangent
+        return v; // flat torus: all vectors tangent
     }
 
     @Override
     public Optional<MotionVector> getNormalVector(Position p) {
-        // Cylinder embedded in 3D: normal points radially outward
-        // In (theta, y) coordinates, express as 3D unit radial vector
-        CylinderPoint cp = requireCylinderPoint(p);
-        double angle = (cp.theta() / circumference) * 2.0 * Math.PI;
-        return Optional.of(new FlatPlane.SimpleMotionVector(
-            new double[]{Math.cos(angle), 0.0, Math.sin(angle)}
-        ));
+        // Flat torus as abstract manifold has no canonical normal
+        return Optional.empty();
     }
 
 
@@ -306,15 +322,15 @@ public class CylindricalManifold implements ContinuousManifold {
     @Override
     public Optional<Double> integrateAlongPath(Position from, Position to,
                                                 Function<Position, Double> field, int steps) {
-        // PATH SEMANTICS: shortest helical geodesic on cylinder
-        CylinderPoint a = requireCylinderPoint(from);
-        CylinderPoint b = requireCylinderPoint(to);
-        double[] delta  = shortestDelta(a, b);
+        // PATH SEMANTICS: shortest geodesic on torus (wrap-aware straight line)
+        TorusPoint a = requireTorusPoint(from);
+        TorusPoint b = requireTorusPoint(to);
+        double[] delta = shortestDelta(a, b);
         double sum = 0.0;
         double ds  = Math.sqrt(delta[0]*delta[0] + delta[1]*delta[1]) / steps;
         for (int i = 0; i <= steps; i++) {
             double t   = (double) i / steps;
-            Position p = point(a.theta() + t*delta[0], a.y() + t*delta[1]);
+            Position p = wrap(a.x() + t*delta[0], a.y() + t*delta[1]);
             double w   = (i == 0 || i == steps) ? 0.5 : 1.0;
             sum += w * field.apply(p) * ds;
         }
@@ -325,14 +341,14 @@ public class CylindricalManifold implements ContinuousManifold {
     public Optional<MotionVector> integrateVectorAlongPath(Position from, Position to,
                                                             Function<Position, MotionVector> field,
                                                             int steps) {
-        CylinderPoint a = requireCylinderPoint(from);
-        CylinderPoint b = requireCylinderPoint(to);
-        double[] delta  = shortestDelta(a, b);
-        double[] acc    = {0.0, 0.0};
+        TorusPoint a = requireTorusPoint(from);
+        TorusPoint b = requireTorusPoint(to);
+        double[] delta = shortestDelta(a, b);
+        double[] acc   = {0.0, 0.0};
         double ds = Math.sqrt(delta[0]*delta[0] + delta[1]*delta[1]) / steps;
         for (int i = 0; i <= steps; i++) {
             double t   = (double) i / steps;
-            Position p = point(a.theta() + t*delta[0], a.y() + t*delta[1]);
+            Position p = wrap(a.x() + t*delta[0], a.y() + t*delta[1]);
             double[] v = field.apply(p).getComponents();
             double w   = (i == 0 || i == steps) ? 0.5 : 1.0;
             acc[0] += w * v[0] * ds;
@@ -351,25 +367,35 @@ public class CylindricalManifold implements ContinuousManifold {
     // Internal helpers
     // ----------------------------------------------------------------
 
-    private CylinderPoint point(double theta, double y) {
-        return new CylinderPoint(wrapTheta(theta), y, CHART_ID);
+    private TorusPoint wrap(double x, double y) {
+        return new TorusPoint(
+            ((x % width)  + width)  % width,
+            ((y % height) + height) % height,
+            CHART_ID
+        );
     }
 
-    private double wrapTheta(double theta) {
-        return ((theta % circumference) + circumference) % circumference;
+    private double[] shortestDelta(TorusPoint a, TorusPoint b) {
+        double dx = b.x() - a.x();
+        double dy = b.y() - a.y();
+        if (Math.abs(dx) > width  / 2) dx -= Math.signum(dx) * width;
+        if (Math.abs(dy) > height / 2) dy -= Math.signum(dy) * height;
+        return new double[]{dx, dy};
     }
 
-    private double[] shortestDelta(CylinderPoint a, CylinderPoint b) {
-        double dTheta = b.theta() - a.theta();
-        if (Math.abs(dTheta) > circumference / 2)
-            dTheta -= Math.signum(dTheta) * circumference;
-        return new double[]{dTheta, b.y() - a.y()};
+    private boolean isWraparoundTransition(TorusPoint from, Position to) {
+        TorusPoint t = requireTorusPoint(to);
+        return Math.abs(t.x() - from.x()) > width/2 || Math.abs(t.y() - from.y()) > height/2;
     }
 
-    private CylinderPoint requireCylinderPoint(Position p) {
-        if (!(p instanceof CylinderPoint cp))
-            throw new IllegalArgumentException("Position must be a CylinderPoint: " + p);
-        return cp;
+    private TorusPoint requireTorusPoint(Position p) {
+        if (!(p instanceof TorusPoint tp))
+            throw new IllegalArgumentException("Position must be a TorusPoint: " + p);
+        return tp;
+    }
+
+    private MotionVector zeroVector() {
+        return new FlatPlane.SimpleMotionVector(new double[]{0.0, 0.0});
     }
 
     private TransitionQuery emptyQuery() {
@@ -387,7 +413,7 @@ public class CylindricalManifold implements ContinuousManifold {
             @Override public String getTopologyType() { return TOPOLOGY_TYPE; }
             @Override public int getIntrinsicDimensionality() { return 2; }
             @Override public Map<String, Object> getProperties() {
-                return Map.of("circumference", circumference);
+                return Map.of("width", width, "height", height);
             }
         };
     }
@@ -397,15 +423,15 @@ public class CylindricalManifold implements ContinuousManifold {
     // Inner value types
     // ----------------------------------------------------------------
 
-    public record CylinderPoint(double theta, double y, String chartId) implements ManifoldPoint {
-        @Override public double[] getCoordinates() { return new double[]{theta, y}; }
+    public record TorusPoint(double x, double y, String chartId) implements ManifoldPoint {
+        @Override public double[] getCoordinates() { return new double[]{x, y}; }
         @Override public int getRepresentationDimensionality() { return 2; }
         @Override public int getDimensionality() { return 2; }
         @Override public boolean isValid() { return true; }
         @Override public String getChartId() { return chartId; }
     }
 
-    private record CylinderCapabilities() implements RegionCapabilities {
+    private record TorusCapabilities() implements RegionCapabilities {
         @Override public boolean canSpawn() { return true; }
         @Override public boolean canMerge() { return true; }
         @Override public boolean canSplit() { return true; }
@@ -414,7 +440,7 @@ public class CylindricalManifold implements ContinuousManifold {
         @Override public boolean isTraversable() { return true; }
     }
 
-    private record CylinderPolicy() implements RegionPolicy {
+    private record TorusPolicy() implements RegionPolicy {
         @Override public double getOperationWeight(String op) { return 1.0; }
         @Override public Map<String, Double> getPolicyWeights() { return Map.of(); }
         @Override public Optional<MotionVector> getSuggestedCorrection(MotionVector v) {
@@ -486,25 +512,18 @@ public class CylindricalManifold implements ContinuousManifold {
 
 
     // ----------------------------------------------------------------
-    // Cylinder geodesic pathfinder
+    // Torus geodesic pathfinder
     // ----------------------------------------------------------------
 
-    private class CylinderGeodesicPathfinder implements GeodesicPathfinder {
+    private class TorusGeodesicPathfinder implements GeodesicPathfinder {
 
         @Override
         public Optional<GeodesicResult> findExactGeodesic(Position from, Position to) {
-            CylinderPoint a = requireCylinderPoint(from);
-            CylinderPoint b = requireCylinderPoint(to);
+            TorusPoint a = requireTorusPoint(from);
+            TorusPoint b = requireTorusPoint(to);
             if (a.equals(b)) return Optional.empty();
-            double[] delta  = shortestDelta(a, b);
-            double length   = Math.sqrt(delta[0]*delta[0] + delta[1]*delta[1]);
-            List<Position> path = new ArrayList<>();
-            int samples = 64;
-            for (int i = 0; i <= samples; i++) {
-                double t = (double) i / samples;
-                path.add(point(a.theta() + t*delta[0], a.y() + t*delta[1]));
-            }
-            return Optional.of(new SimpleGeodesicResult(path, length, true, true));
+            double[] delta = shortestDelta(a, b);
+            return Optional.of(samplePath(a, delta, 64, true, true));
         }
 
         @Override
@@ -514,26 +533,21 @@ public class CylindricalManifold implements ContinuousManifold {
 
         @Override
         public List<GeodesicResult> findAllExactGeodesics(Position from, Position to) {
-            CylinderPoint a = requireCylinderPoint(from);
-            CylinderPoint b = requireCylinderPoint(to);
+            TorusPoint a = requireTorusPoint(from);
+            TorusPoint b = requireTorusPoint(to);
+            // Four possible geodesics: direct, wrap-x, wrap-y, wrap-xy
             List<GeodesicResult> results = new ArrayList<>();
-            // Two angular directions: shortest and longest wrap
-            double dTheta = b.theta() - a.theta();
-            double[] shortDelta = shortestDelta(a, b);
-            double[] longDelta  = {
-                dTheta - Math.signum(dTheta) * circumference,
-                b.y() - a.y()
+            double dx = b.x() - a.x();
+            double dy = b.y() - a.y();
+            double[][] deltas = {
+                {dx, dy},
+                {dx - Math.signum(dx)*width, dy},
+                {dx, dy - Math.signum(dy)*height},
+                {dx - Math.signum(dx)*width, dy - Math.signum(dy)*height}
             };
-            for (double[] delta : new double[][]{shortDelta, longDelta}) {
+            for (double[] delta : deltas) {
                 double len = Math.sqrt(delta[0]*delta[0] + delta[1]*delta[1]);
-                if (len > 0) {
-                    List<Position> path = new ArrayList<>();
-                    for (int i = 0; i <= 64; i++) {
-                        double t = (double) i / 64;
-                        path.add(point(a.theta() + t*delta[0], a.y() + t*delta[1]));
-                    }
-                    results.add(new SimpleGeodesicResult(path, len, true, false));
-                }
+                if (len > 0) results.add(samplePath(a, delta, 64, true, false));
             }
             results.sort(Comparator.comparingDouble(GeodesicResult::getArcLength));
             return Collections.unmodifiableList(results);
@@ -556,18 +570,29 @@ public class CylindricalManifold implements ContinuousManifold {
         public Optional<GeodesicResult> findBestGeodesic(Position from, Position to, int steps) {
             return findExactGeodesic(from, to);
         }
+
+        private GeodesicResult samplePath(TorusPoint start, double[] delta,
+                                           int samples, boolean exact, boolean unique) {
+            List<Position> path = new ArrayList<>();
+            double len = Math.sqrt(delta[0]*delta[0] + delta[1]*delta[1]);
+            for (int i = 0; i <= samples; i++) {
+                double t = (double) i / samples;
+                path.add(wrap(start.x() + t*delta[0], start.y() + t*delta[1]));
+            }
+            return new SimpleGeodesicResult(path, len, exact, unique);
+        }
     }
 
 
     // ----------------------------------------------------------------
-    // Cylinder curvature calculator
+    // Torus curvature calculator
     // ----------------------------------------------------------------
 
-    private class CylinderCurvatureCalculator implements GeometricCurvatureCalculator {
+    private class TorusCurvatureCalculator implements GeometricCurvatureCalculator {
 
         @Override
         public double computeScalarCurvature(Position p, double[][] metricTensor) {
-            return 0.0; // cylinder is flat: K=0
+            return 0.0; // flat torus: K=0 everywhere
         }
 
         @Override
@@ -582,7 +607,7 @@ public class CylindricalManifold implements ContinuousManifold {
 
         @Override
         public Optional<double[][][][]> computeRiemannTensor(Position p, double[][] metricTensor) {
-            return Optional.of(new double[2][2][2][2]);
+            return Optional.of(new double[2][2][2][2]); // all zero
         }
 
         @Override
@@ -592,27 +617,21 @@ public class CylindricalManifold implements ContinuousManifold {
 
         @Override
         public Optional<Double> computeGaussianCurvature(Position p, double[][] metricTensor) {
-            return Optional.of(0.0); // intrinsically flat
+            return Optional.of(0.0);
         }
 
         @Override
         public Optional<double[]> computePrincipalCurvatures(Position p, double[][] metricTensor) {
-            // Cylinder embedded in 3D: one principal curvature is 1/r, other is 0
-            double r = circumference / (2.0 * Math.PI);
-            return Optional.of(new double[]{0.0, 1.0 / r}); // k1 <= k2
+            return Optional.of(new double[]{0.0, 0.0});
         }
 
         @Override
         public Optional<Double> computeMeanCurvature(Position p, double[][] metricTensor) {
-            // H = (k1 + k2) / 2 = (0 + 1/r) / 2
-            double r = circumference / (2.0 * Math.PI);
-            return Optional.of(1.0 / (2.0 * r));
+            return Optional.of(0.0);
         }
 
         @Override
         public CurvatureField buildCurvatureField(Position p, double[][] metricTensor) {
-            double r = circumference / (2.0 * Math.PI);
-            double meanCurv = 1.0 / (2.0 * r);
             return new CurvatureField() {
                 @Override public double getScalarIntensity() { return 0.0; }
                 @Override public Optional<double[]> getCurvatureTensor() {
@@ -633,6 +652,7 @@ public class CylindricalManifold implements ContinuousManifold {
 
 	@Override
 	public String getChartIdAt(Position p) {
-requireCylinderPoint(p);		return CHART_ID;
+		requireTorusPoint(p);
+		return CHART_ID;
 	}
 }

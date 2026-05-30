@@ -1,4 +1,4 @@
-package manifolds.discrete.implemention;
+package manifolds.discrete.implementation;
 
 
 import java.util.Collections;

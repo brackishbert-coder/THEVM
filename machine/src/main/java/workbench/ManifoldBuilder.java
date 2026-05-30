@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import machine.ManifoldSpace;
-import manifolds.continuous.implemention.CurveManifold;
+import manifolds.continuous.implementation.CurveManifold;
 
 import org.springframework.stereotype.Component;
 

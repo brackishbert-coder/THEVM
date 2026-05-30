@@ -70,7 +70,7 @@ public class ManifoldResponseAssembler {
         int dims       = compiled.manifoldSpace().getLocalManifoldDimensionality(origin);
 
         double arcLength = 0.0;
-        if (compiled.manifoldSpace() instanceof manifolds.continuous.implemention.CurveManifold curve) {
+        if (compiled.manifoldSpace() instanceof manifolds.continuous.implementation.CurveManifold curve) {
             arcLength = curve.getTotalArcLength();
         }
 

@@ -3,7 +3,7 @@ package workbench;
 import machine.CurvatureField;
 import machine.ManifoldSpace;
 import machine.Position;
-import manifolds.continuous.implemention.CurveManifold;
+import manifolds.continuous.implementation.CurveManifold;
 
 import java.util.ArrayList;
 import java.util.List;

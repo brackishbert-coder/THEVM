@@ -1,4 +1,4 @@
-package execution.implmentation;
+package execution.implementation;
 
 
 import java.util.List;
@@ -15,7 +15,7 @@ import machine.PatternObserver;
 import machine.SimilarityMatcher;
 import machine.StoppingCondition;
 import machine.SystemSnapshot;
-import manifolds.continuous.implemention.FlatPlane;
+import manifolds.continuous.implementation.FlatPlane;
 
 /**
  * Minimal bootstrap runner for the manifold system.

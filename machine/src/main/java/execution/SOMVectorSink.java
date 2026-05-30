@@ -1,6 +1,6 @@
 package execution;
 
-import execution.implmentation.SimpleSOMObserver;
+import execution.implementation.SimpleSOMObserver;
 
 /**
  * Receives encoded observation vectors from a SOMObserver.

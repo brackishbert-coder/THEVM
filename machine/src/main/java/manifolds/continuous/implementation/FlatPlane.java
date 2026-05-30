@@ -1,4 +1,4 @@
-package manifolds.continuous.implemention;
+package manifolds.continuous.implementation;
 
 
 
